@@ -48,6 +48,7 @@ class ExtendedKalmanFilter(object):
         pose = self._state_vector[0:3]
 
         # TODO: Implement the EKF prediction step using the process model.
+        #       prediction, x_pred = f(x, u) + noise
         #       Use the helper in utils Relative2AbsolutePose to compute the predicted pose and the Jacobians F and W.
         #       Then compute the predicted state mean X and state covariance P using the EKF prediction equations.
 
