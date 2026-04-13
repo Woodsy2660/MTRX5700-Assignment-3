@@ -5,7 +5,7 @@ with respect to that pose
 @author: admin-u5941570
 Updated on 26-3-23
 @maintainers: Viorela Ila, Max Revay, Jing Cheng, Stefan Williams,
-Stephany Berrio Perez, Tejaswi Digumarti, Jesse Morris
+Stephany Berrio Perez, Tejaswi Digumarti, Jesse Morris, Arihant Lunawat
 """
 
 import numpy as np
@@ -17,8 +17,6 @@ def pi2pi(angle):
     :param angle: then angle that needs to be mapped to the range [-pi, pi]
     :return : angle in the range [-pi, pi]
     """
-
-    # This function does not need any changes
 
     dp = 2 * np.pi
     if angle <= -dp or angle >= dp:
@@ -47,19 +45,51 @@ def Relative2AbsolutePose(robot_pose_abs, u_rel):
     and the motion command respectively
     :rtype: tuple
     """
+
     assert robot_pose_abs.shape == (3, 1)
     assert u_rel.shape == (3, 1)
 
-    # TODO: implement the process model for EKF prediction.
-    #       1) compute the predicted pose in global coordinates.
-    #       2) compute the Jacobian F = df/dx of the motion model with
-    #          respect to the robot pose.
-    #       3) compute the Jacobian W = df/du of the motion model with
-    #          respect to the control input.
-    #       4) normalize the yaw angle to [-pi, pi].
-    #       5) return the predicted pose and the Jacobians F and W.
+    x1 = robot_pose_abs[0][0]
+    y1 = robot_pose_abs[1][0]
+    theta1 = robot_pose_abs[2][0]
+    dx = u_rel[0][0]
+    dy = u_rel[1][0]
+    dtheta = u_rel[2][0]
 
-    raise NotImplementedError("TODO: implement Relative2AbsolutePose")
+    # R is the transition matrix of robot frame
+    # i.e. X_t+1 = X_t + R(theta_t) * u
+    R = np.array(
+        [
+            [np.cos(theta1), -np.sin(theta1), 0],
+            [np.sin(theta1), np.cos(theta1), 0],
+            [0, 0, 1],
+        ]
+    )
+
+    next_robot_pose_abs = R @ u_rel + robot_pose_abs
+    next_robot_pose_abs[2][0] = pi2pi(next_robot_pose_abs[2][0])
+
+    # Calculate Jacobian of X_t+1 with respect to the current robot pose X_t
+    F = np.array(
+        [
+            [1, 0, -dx * np.sin(theta1) - dy * np.cos(theta1)],
+            [0, 1, dx * np.cos(theta1) - dy * np.sin(theta1)],
+            [0, 0, 1],
+        ]
+    )
+
+    # Calculate Jacobian of X_t+1 with respect to motion command u
+    W = np.array(
+        [
+            [np.cos(theta1), -np.sin(theta1), 0],
+            [np.sin(theta1), np.cos(theta1), 0],
+            [0, 0, 1],
+        ]
+    )
+
+    assert next_robot_pose_abs.shape == (3, 1)
+
+    return next_robot_pose_abs, F, W
 
 
 def Absolute2RelativeXY(robot_pose_abs, landmark_position_abs):
@@ -78,19 +108,54 @@ def Absolute2RelativeXY(robot_pose_abs, landmark_position_abs):
     pose and the landmark
     :rtype: tuple
     """
+
     assert robot_pose_abs.shape == (3, 1)
     assert landmark_position_abs.shape == (2, 1)
 
-    # TODO: implement the measurement model for EKF update.
-    #       1) compute the expected relative position of the landmark in the
-    #          robot frame.
-    #       2) compute the Jacobian H = dh/dx of the measurement model with
-    #          respect to the robot pose.
-    #       3) compute the Jacobian J = dh/dl of the measurement model with
-    #          respect to the landmark position.
-    #       4) return the expected measurement and the Jacobians H and J.
+    x1 = robot_pose_abs[0][0]
+    y1 = robot_pose_abs[1][0]
+    theta1 = robot_pose_abs[2][0]
+    x2 = landmark_position_abs[0]
+    y2 = landmark_position_abs[1]
 
-    raise NotImplementedError("TODO: implement Absolute2RelativeXY")
+    # Calculate the difference with respect to world frame
+    diff = np.array([[x2 - x1], [y2 - y1], [1]])
+
+    # R is the transition matrix to robot frame
+    R = [
+        [np.cos(-theta1), -np.sin(-theta1), 0],
+        [np.sin(-theta1), np.cos(-theta1), 0],
+        [0, 0, 1],
+    ]
+
+    landmark_position_rel = np.dot(R, diff)
+
+    # Calculate Jacobian of the relative landmark position wrt. the robot pose,
+    # i.e. [x1, y1, theta1]
+    H = np.array(
+        [
+            [
+                -np.cos(theta1),
+                -np.sin(theta1),
+                -(x2 - x1) * np.sin(theta1) + (y2 - y1) * np.cos(theta1),
+            ],
+            [
+                np.sin(theta1),
+                -np.cos(theta1),
+                -(x2 - x1) * np.cos(theta1) - (y2 - y1) * np.sin(theta1),
+            ],
+        ]
+    )
+
+    # Calculate Jacobian of the relative landmark position wrt. the absolute
+    # landmark pose. i.e. [x2, y2]
+    J = np.array([[np.cos(theta1), np.sin(theta1)], [-np.sin(theta1), np.cos(theta1)]])
+
+    return (
+        np.array([[landmark_position_rel[0][0]], [landmark_position_rel[1][0]]]),
+        H,
+        J,
+    )
 
 
 def Relative2AbsoluteXY(robot_pose_abs, landmark_position_rel):
@@ -100,19 +165,43 @@ def Relative2AbsoluteXY(robot_pose_abs, landmark_position_rel):
     :param landmark_position_rel: position of the landmark in the robot's frame of reference [x, y]
     :return : [position of the landmark in the absolute frame of reference [x, y], G1, G2]
     """
+
     assert robot_pose_abs.shape == (3, 1)
     assert landmark_position_rel.shape == (2, 1)
 
-    # TODO: implement the inverse measurement model for landmark initialization.
-    #       1) compute the absolute landmark position from the robot pose and
-    #          relative landmark coordinates.
-    #       2) compute the Jacobian G1 = dL/dx of the landmark position with
-    #          respect to the robot pose.
-    #       3) compute the Jacobian G2 = dL/dl of the landmark position with
-    #          respect to the relative measurement.
-    #       4) return the absolute landmark position and the Jacobians G1 and G2.
+    x1 = robot_pose_abs[0][0]
+    y1 = robot_pose_abs[1][0]
+    theta1 = robot_pose_abs[2][0]
+    x2 = landmark_position_rel[0]
+    y2 = landmark_position_rel[1]
 
-    raise NotImplementedError("TODO: implement Relative2AbsoluteXY")
+    landmark_position_rel_vec = np.array([[x2], [y2], [1]])
+
+    # R is the transition matrix to robot frame
+    R = np.array(
+        [
+            [np.cos(theta1), -np.sin(theta1), 0],
+            [np.sin(theta1), np.cos(theta1), 0],
+            [0, 0, 1],
+        ]
+    )
+
+    # Calculate Jacobian H1 with respect to X1
+    G1 = np.array(
+        [
+            [1, 0, -x2 * np.sin(theta1) - y2 * np.cos(theta1)],
+            [0, 1, x2 * np.cos(theta1) - y2 * np.sin(theta1)],
+        ]
+    )
+
+    # Calculate Jacobian H2 with respect to X2
+    G2 = np.array([[np.cos(theta1), -np.sin(theta1)], [np.sin(theta1), np.cos(theta1)]])
+
+    landmark_abs = np.array(np.dot(R, landmark_position_rel_vec)) + np.array(
+        robot_pose_abs
+    )
+
+    return np.array([[landmark_abs[0][0]], [landmark_abs[1][0]]]), G1, G2
 
 
 def RelativeLandmarkPositions(landmark_position_abs, next_landmark_position_abs):
@@ -123,6 +212,7 @@ def RelativeLandmarkPositions(landmark_position_abs, next_landmark_position_abs)
     :param next_landmark_position_abs: position of the next landmark in the absolute reference frame [x, y]
     :return : relative position of the next landmark with respect to the current landmark's position [dx, dy]
     """
+
     assert landmark_position_abs.shape == (2, 1)
     assert next_landmark_position_abs.shape == (2, 1)
 
@@ -145,6 +235,7 @@ def homogenous_transform(R: np.array, t: np.array):
     Given a rotation matrix R and a translation vector t, compute the homogenous transformation matrix H
     that transforms points from the local frame to the global frame.
     """
+
     assert t.shape == (3, 1)
     assert R.shape == (3, 3)
 
