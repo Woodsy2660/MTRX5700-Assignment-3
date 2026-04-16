@@ -25,13 +25,45 @@ class CircleFit:
     covariance: np.ndarray
 
 
+def cluster_points(scan_points, distance_threshold):
+    """
+    Splits ordered lidar scan points into clusters using a range-adaptive distance threshold.
+
+    threshold(r) = r * distance_threshold, so the effective angular gap is constant
+    regardless of range. Handles the circular wrap-around of the scan (last point is
+    angularly adjacent to the first).
+
+    Args:
+        scan_points: Nx2 array of (x, y) points in scan order.
+        distance_threshold: Max gap at 1 m range to stay in the same cluster.
+
+    Returns:
+        List of Nx2 numpy arrays, one per cluster.
+    """
+    dist_diffs = np.linalg.norm(scan_points[1:] - scan_points[:-1], axis=1)
+    point_ranges = np.linalg.norm(scan_points[:-1], axis=1)
+    split_indices = np.where(dist_diffs >= point_ranges * distance_threshold)[0] + 1
+    clusters = list(np.split(scan_points, split_indices))
+
+    # Wrap-around check: the scan is circular so the last point is angularly
+    # adjacent to the first. Merge the first and last clusters if close enough.
+    if len(clusters) > 1:
+        wrap_gap = np.linalg.norm(scan_points[-1] - scan_points[0])
+        wrap_threshold = np.linalg.norm(scan_points[-1]) * distance_threshold
+        if wrap_gap < wrap_threshold:
+            clusters[0] = np.vstack([clusters[-1], clusters[0]])
+            clusters.pop()
+
+    return clusters
+
+
 def extract_circular_objects(
     scan_points,
-    distance_threshold=0.1,
-    min_points=3,
-    max_radius=0.1,
-    min_radius=0.03,
-    max_mse=0.005,
+    distance_threshold=0.05,
+    min_points=4,
+    max_radius=0.12,
+    min_radius=0.06,
+    max_mse=1.0e-5,
     max_aspect_ratio=None,
     min_arc_angle=None,
     min_center_range=None,
@@ -42,14 +74,14 @@ def extract_circular_objects(
 
     Args:
         scan_points: Nx2 numpy array of (x, y) coordinates from a sequential scan.
-        distance_threshold: Max distance between consecutive points to remain in the same cluster.
+        distance_threshold: Max gap between consecutive points at 1 m range to remain in the
+                            same cluster. Scales linearly with range: threshold(r) = r * distance_threshold.
+                            This matches the angular spacing of a lidar beam, so the threshold adapts
+                            to the sparser point density at longer ranges.
         min_points: Minimum points required to attempt a circle fit.
         max_radius: Maximum allowable radius (meters) to filter out straight walls/lines.
         min_radius: Minimum allowable radius (meters). Rejects spuriously small fits.
-        max_mse: If set, rejects fits whose MSE normalized by r^2 (dimensionless) exceeds this
-                 value. Normalizing by r^2 makes the threshold scale-invariant: for the same
-                 angular sensor noise, residuals grow proportionally with r so raw MSE scales
-                 as r^2. Try 0.02 - 0.1.
+        max_mse: If set, rejects fits whose MSE exceeds this value (meters^2).
         max_aspect_ratio: If set, rejects clusters whose PCA eigenvalue ratio (largest/smallest)
                           exceeds this before fitting. Walls and corners are elongated (high ratio);
                           circular arcs are compact. Try 4.0–8.0. Saves fitting cost on bad clusters.
@@ -69,13 +101,8 @@ def extract_circular_objects(
     if len(scan_points) < min_points:
         return []
 
-    # 1. Vectorized Clustering (Much faster than a for-loop for large scans)
-    # Calculate Euclidean distances between consecutive points
-    dist_diffs = np.linalg.norm(scan_points[1:] - scan_points[:-1], axis=1)
-
-    # Find indices where distance exceeds the threshold to split the array
-    split_indices = np.where(dist_diffs >= distance_threshold)[0] + 1
-    clusters = np.split(scan_points, split_indices)
+    # 1. Cluster scan points using range-adaptive distance threshold
+    clusters = cluster_points(scan_points, distance_threshold)
 
     # Keep only clusters with enough points
     valid_clusters = [c for c in clusters if len(c) >= min_points]
@@ -106,8 +133,7 @@ def extract_circular_objects(
         if fit.radius < min_radius:
             continue
 
-        # Normalize MSE by r^2 so the threshold is scale-invariant across circle sizes.
-        if max_mse is not None and fit.mse / fit.radius**2 > max_mse:
+        if max_mse is not None and fit.mse > max_mse:
             continue
 
         # Reject fits whose centers are too close to the sensor origin,
