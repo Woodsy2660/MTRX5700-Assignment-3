@@ -31,6 +31,7 @@ The core package. It implements the full EKF SLAM pipeline — reading sensor da
 | `landmarks_circle_detector.py` | Detects cylindrical landmarks in 2D laser scan data. Clusters scan points, fits circles using algebraic least squares + Levenberg-Marquardt refinement, and propagates fit covariance. Supports Cartesian and polar output. |
 | `types.py` | Data classes: `LandmarkMeasurement` (x, y, label, 2×2 covariance) and `ControlMeasurement` (dx, dy, dθ, 3×3 covariance). |
 | `utils.py` | Geometry helpers used inside the EKF: `Relative2AbsolutePose`, `Relative2AbsoluteXY`, `Absolute2RelativeXY`, `pi2pi`, and `RelativeLandmarkPositions`. |
+| `tune_clustering.py` | Standalone interactive tuner for the range-adaptive clustering distance threshold. Loads the first `LaserScan` or `PointCloud` message from a ROS 2 bag (MCAP) and renders a matplotlib plot with a slider to find the right `distance_threshold` for `extract_circular_objects`. Run directly: `python tune_clustering.py <bag_path> [--topic /scan] [--max-range 5.0]`. |
 
 **Scripts (`scripts/`):**
 
@@ -96,6 +97,43 @@ EkfPipelineNode
                                       │
                                 map_writer.py → map_slam.txt
 ```
+
+## Landmark Detection Tuning
+
+`extract_circular_objects()` in `landmarks_circle_detector.py` converts raw laser scan points into circle detections. On the real robot, your node must call this function on each `/scan` message and publish results on `/landmarks` for the EKF to consume.
+
+### Diagnostic tools
+
+Verify detection on a recorded bag before integrating into a node:
+
+```bash
+# Record a bag near the cylinders
+ros2 bag record /pointcloud2d
+
+# Step through scans and visualise detected circles (click/keypress to advance)
+python landmarks_circle_detector.py <bag_path> [--topic /pointcloud2d] [--max-range <max_range_meters | default = 3.0>]
+
+# Interactively tune the clustering threshold with a live slider
+python tune_clustering.py <bag_path> [--topic /pointcloud2d] [--max-range <max_range_meters | default = 3.0>]
+```
+
+Both scripts accept topics of msg type `LaserScan` or `PointCloud`. Run from `src/turtlebot_landmark_slam/`.
+
+### Tuning parameters
+
+All parameters are arguments to `extract_circular_objects()`. Defaults are a reasonable starting point for the MXLab cylinders.
+
+| Parameter | Default | What it controls |
+|-----------|---------|-----------------|
+| `distance_threshold` | `0.05` | Max gap between consecutive scan points (at 1 m range) to remain in the same cluster. Scales with range, so the angular gap is approximately constant. **Start here** using `tune_clustering.py`. |
+| `min_points` | `4` | Minimum points a cluster must contain before a circle fit is attempted. |
+| `max_radius` | `0.12` | Maximum fitted circle radius (meters). Keeps wall arcs from passing through. |
+| `min_radius` | `0.06` | Minimum fitted circle radius (meters). Rejects degenerate point-like fits. |
+| `max_mse` | `1e-5` | Maximum geometric fit error (m²). Walls produce high MSE; cylinders produce low MSE. |
+| `max_aspect_ratio` | `None` | PCA eigenvalue ratio of the cluster. High ratio = elongated (wall/corner). Enable to skip fitting on obvious non-circles. |
+| `min_arc_angle` | `None` | Minimum arc (radians) the cluster must subtend around the fitted center. Filters corner reflections that cover only a small arc. |
+| `min_center_range` | `None` | Minimum distance from sensor origin to fitted center. Filters near-field noise and robot body reflections. |
+| `polar` | `False` | Return center as `(range, bearing)` with propagated covariance, instead of `(x, y)`. |
 
 ## Student Task
 
