@@ -142,6 +142,12 @@ The only file requiring implementation is `ekf.py`:
 - **`predict(control_measurement)`** — EKF prediction step. Use `utils.Relative2AbsolutePose` to compute the predicted pose and Jacobians `F` and `W`, then propagate the state mean and covariance.
 - **`update(landmark_measurement, is_new)`** — EKF update step. For a new landmark, initialise its position with `utils.Relative2AbsoluteXY`. For a previously seen landmark, compute the expected measurement with `utils.Absolute2RelativeXY`, form the innovation, innovation covariance `S`, Kalman gain `K`, and apply the update to the full joint state.
 
+## Recorded Datasets
+
+You have access to two datasets recorded on the TurtleBot. They can be used for testing your EKF implementation logic before you deploy the code on a real robot. [https://drive.google.com/drive/u/1/folders/1YXIU8uambCT1qQPwVdBeUVEt1pzH29DE][Link to datasets | GDrive]
+
+The calibration parameters for the Lidar and Camera are also provided at the link above. Ensure that you use these parameters in your perception pipeline and not the ones from your own TurtleBot.
+
 ## Running
 
 **Simulation:**
