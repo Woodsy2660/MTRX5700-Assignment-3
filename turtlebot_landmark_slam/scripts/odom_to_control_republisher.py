@@ -15,7 +15,7 @@ class OdomToTwistRepublisher(Node):
 
     def __init__(self) -> None:
         super().__init__("odom_to_control")
-        self.control_pub = self.create_publisher(Twist, "~/control", 1)
+        self.control_pub = self.create_publisher(Twist,"~/control", 1)
         self.frame = self.declare_parameter("robot_frame", "base_link").value
         self.seq = 0
         self.create_subscription(Odometry, "~/odom", self.odomCallback, 1)
