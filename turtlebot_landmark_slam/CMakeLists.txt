@@ -16,6 +16,7 @@ install(PROGRAMS
   scripts/odom_to_control_republisher.py
   scripts/map_writer.py
   scripts/evaluate_map.py
+  scripts/path_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
