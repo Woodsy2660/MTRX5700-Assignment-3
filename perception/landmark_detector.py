@@ -23,9 +23,9 @@ class LandmarkObservation:
 
 class LandmarkDetector:
 
-    # TODO: replace with calibrated values from Assignment 2
-    DEFAULT_FX = 530.0   # focal length in pixels
-    DEFAULT_CX = 320.0   # principal point x
+    # from Assignment 2 calibration.py (K matrix)
+    DEFAULT_FX = 483.04   # K[0][0]
+    DEFAULT_CX = 307.23   # K[0][2]
 
     # markers smaller than this are almost certainly false positives
     # checked against bag data: real tags >= 22px, false positive was 11px

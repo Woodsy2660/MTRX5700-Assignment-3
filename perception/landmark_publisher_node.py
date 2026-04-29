@@ -23,9 +23,9 @@ from landmarks_msg.msg import LandmarkMsg, LandmarksMsg
 
 class LandmarkPublisherNode(Node):
 
-    # TODO: replace with calibrated values from Assignment 2
-    FX = 530.0
-    CX = 320.0
+    # from Assignment 2 calibration.py (K matrix)
+    FX = 483.04   # K[0][0]
+    CX = 307.23   # K[0][2]
 
     def __init__(self):
         super().__init__("landmark_publisher")
