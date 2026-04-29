@@ -17,6 +17,7 @@ install(PROGRAMS
   scripts/map_writer.py
   scripts/evaluate_map.py
   scripts/path_publisher.py
+  scripts/landmark_publisher_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

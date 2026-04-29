@@ -18,10 +18,6 @@ def generate_launch_description():
                 name="ekf",
                 output="screen",
                 parameters=[{"is_real": ParameterValue(is_real, value_type=bool)}],
-                remappings=[
-                    ("~/landmarks", "/landmarks"),
-                    ("~/control", "/cmd_vel"),
-                ],
                 condition=IfCondition(is_real),
             ),
             Node(
@@ -30,12 +26,13 @@ def generate_launch_description():
                 name="ekf",
                 output="screen",
                 parameters=[{"is_real": ParameterValue(is_real, value_type=bool)}],
-                remappings=[
-                    ("~/landmarks", "/landmarks"),
-                    ("~/gt_odom", "/odom"),
-                    ("~/control", "/odom_to_control_republisher/control"),
-                ],
                 condition=UnlessCondition(is_real),
+            ),
+            Node(
+                package="turtlebot_landmark_slam",
+                executable="path_publisher.py",
+                name="ekf_path_publisher",
+                output="screen",
             ),
         ]
     )

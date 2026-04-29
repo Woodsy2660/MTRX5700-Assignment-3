@@ -32,23 +32,24 @@ class Pipeline(object):
         if self.is_real:
             self._node.get_logger().info(
                 "is_real=true: using OnlineDataProvider (no noise added to control input)."
-                " Control noise std deviation can be set in ekf_pipeline.launch."
+                " Initialising EKF starting pose from /odom."
             )
+            self._initialiseStartingPose()
             self._data_provider = OnlineDataProvider(
                 self._node, self.controlHandler, self.landmarkHandler
             )
         else:
             self._node.get_logger().info(
                 "is_real=false: using SimulationDataProvider (noise added to control input)."
-                " Waiting for ~/gt_odom to initialise the EKF starting pose."
+                " Initialising EKF starting pose from /odom."
             )
             self._initialiseStartingPose()
             self._data_provider = SimulationDataProvider(
                 self._node, self.controlHandler, self.landmarkHandler
             )
 
-        self.odom_publisher = self._node.create_publisher(Odometry, "~/odom", 1)
-        self.map_publisher = self._node.create_publisher(MarkerArray, "~/map", 5)
+        self.odom_publisher = self._node.create_publisher(Odometry, "/ekf/odom", 1)
+        self.map_publisher = self._node.create_publisher(MarkerArray, "/ekf/map", 5)
         self.publisher_timer = self._node.create_timer(0.3, self.publishTimerCallback)
 
     # ------------------------------------------------------------------
@@ -120,6 +121,12 @@ class Pipeline(object):
 
     def _publishLandmarkMap(self):
         landmark_poses = self._ekf.state_mean[3:].flatten()
+
+        # diagnostic — print what we're about to publish
+        print(f"[publish] state[3:] = {landmark_poses.round(4).tolist()} "
+              f"len={len(landmark_poses)}",
+              flush=True)
+
         seen_landmarks = list(self._seen_landmarks)
         marker_array_msg = MarkerArray()
 
@@ -149,7 +156,7 @@ class Pipeline(object):
 
     def _initialiseStartingPose(self):
         """Seed the EKF state from a single ground-truth odometry message."""
-        odom = self._wait_for_message("~/gt_odom", Odometry, 5.0)
+        odom = self._wait_for_message("/odom", Odometry, 10.0)
 
         if odom is None:
             self._node.get_logger().warn(

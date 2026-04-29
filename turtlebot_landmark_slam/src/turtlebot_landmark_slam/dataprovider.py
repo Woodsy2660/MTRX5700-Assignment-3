@@ -46,12 +46,12 @@ class DataProviderBase(ABC):
 
         # Subscribe to the cylinder node output
         self._landmarks_subscription = self._node.create_subscription(
-            LandmarksMsg, "~/landmarks", self.landmarkCallback, 1
+            LandmarksMsg, "/landmarks", self.landmarkCallback, 1
         )
 
         # Subscribe to control message. This should be a Twist
         self._control_subscription = self._node.create_subscription(
-            Twist, "~/control", self.controlCallback, 1
+            Twist, "/control", self.controlCallback, 1
         )
 
     def controlCallback(self, twist: Twist):

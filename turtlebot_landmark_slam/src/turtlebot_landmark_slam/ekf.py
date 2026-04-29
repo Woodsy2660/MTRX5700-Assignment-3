@@ -246,3 +246,27 @@ class ExtendedKalmanFilter(object):
         # Commit posterior
         self._state_vector = np.array(posterior_state_mean, copy=True)
         self._state_covariance = np.array(posterior_state_covariance, copy=True)
+
+        # ---- diagnostic block ----
+        idx = self._landmark_index[label]
+
+        # before/after position to see correction magnitude
+        prior_lm = x[idx:idx+2].flatten()
+        post_lm = self._state_vector[idx:idx+2].flatten()
+        delta = post_lm - prior_lm
+
+        # covariance scalars
+        lm_cov = self._state_covariance[idx:idx+2, idx:idx+2]
+        pose_cov = self._state_covariance[:3, :3]
+        lm_det = np.linalg.det(lm_cov)
+        pose_det = np.linalg.det(pose_cov)
+
+        # innovation and gain magnitudes
+        innovation_norm = np.linalg.norm(y)
+        K_norm = np.linalg.norm(K)
+
+        print(f"[EKF] upd id={label} new={is_new} "
+              f"|innov|={innovation_norm:.4f} |K|={K_norm:.4e} "
+              f"|Δlm|={np.linalg.norm(delta):.4e} "
+              f"|Σ_lm|={lm_det:.4e} |Σ_pose|={pose_det:.4e}",
+              flush=True)
