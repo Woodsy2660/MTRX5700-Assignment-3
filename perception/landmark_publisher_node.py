@@ -1,24 +1,14 @@
-"""
-landmark_publisher_node.py — ROS2 node for Assignment 3.
-
-Runs on the Linux TurtleBot laptop (not the Mac).
-Subscribes to /camera/image_raw and /pointcloud2d, detects ArUco tags,
-computes range-bearing measurements, and publishes to /landmarks.
-
-To use:
-  1. Copy landmark_detector.py and this file onto the Linux laptop
-     (into your ROS2 package's directory alongside your other nodes)
-  2. Check the LandmarkMsg field names match your landmarks_msgs package
-  3. Replace FX / CX with your Assignment 2 calibration values
-  4. Run: ros2 run <your_package> landmark_publisher_node
-
-Dependencies (already in your ROS2 workspace):
-  - rclpy
-  - sensor_msgs
-  - landmarks_msgs  (the custom message from the ekf-landmark-slam scaffold)
-  - cv_bridge
-  - numpy, opencv-python
-"""
+# ROS2 landmark publisher node - runs on the Linux TurtleBot laptop
+#
+# Subscribes to:
+#   /camera/image_raw   - camera frames
+#   /pointcloud2d       - lidar scans
+#
+# Publishes to:
+#   /landmarks          - LandmarksMsg containing one LandmarkMsg per detected tag
+#                         fields: label (tag ID), x, y (robot body frame), s_x, s_y
+#
+# Usage: ros2 run <your_package> landmark_publisher_node
 
 import numpy as np
 import rclpy
@@ -28,82 +18,76 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image, PointCloud
 from cv_bridge import CvBridge
 
-# ── TODO: confirm field names by running:
-#    ros2 interface show landmarks_msgs/msg/LandmarkMsg
-from landmarks_msgs.msg import LandmarkMsg
+from landmarks_msg.msg import LandmarkMsg, LandmarksMsg
 
 
 class LandmarkPublisherNode(Node):
 
-    # ── Camera intrinsics — replace with your Assignment 2 calibration ────────
-    FX = 530.0      # focal length x, pixels
-    CX = 320.0      # principal point x, pixels
+    # TODO: replace with calibrated values from Assignment 2
+    FX = 530.0
+    CX = 320.0
 
     def __init__(self):
         super().__init__("landmark_publisher")
 
-        # Import here so the file can be linted/imported without landmark_detector on PYTHONPATH
         from landmark_detector import LandmarkDetector
         self.detector = LandmarkDetector(fx=self.FX, cx=self.CX)
+        self.bridge   = CvBridge()
 
-        self.bridge = CvBridge()
-
-        # Latest lidar scan — updated in its own callback, read in camera callback
+        # store the latest lidar scan so the camera callback can use it
         self._latest_pointcloud: np.ndarray | None = None
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-
         self.create_subscription(Image,      "/camera/image_raw", self._on_image,      qos)
         self.create_subscription(PointCloud, "/pointcloud2d",     self._on_pointcloud, qos)
 
-        self._pub = self.create_publisher(LandmarkMsg, "/landmarks", 10)
-
-        self.get_logger().info("LandmarkPublisher ready — watching /camera/image_raw + /pointcloud2d")
-
-    # ── Lidar callback ────────────────────────────────────────────────────────
+        self._pub = self.create_publisher(LandmarksMsg, "/landmarks", 10)
+        self.get_logger().info("landmark_publisher started")
 
     def _on_pointcloud(self, msg: PointCloud) -> None:
-        """Cache the latest lidar scan as an Nx2 numpy array [x, y]."""
         if not msg.points:
             return
-        pts = np.array([[p.x, p.y] for p in msg.points], dtype=np.float32)
-        self._latest_pointcloud = pts
-
-    # ── Camera callback ───────────────────────────────────────────────────────
+        self._latest_pointcloud = np.array(
+            [[p.x, p.y] for p in msg.points], dtype=np.float32
+        )
 
     def _on_image(self, msg: Image) -> None:
-        """Detect ArUco tags and publish a LandmarkMsg for each valid detection."""
         try:
             img_bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
-            self.get_logger().warn(f"cv_bridge failed: {e}")
+            self.get_logger().warn(f"cv_bridge: {e}")
             return
 
         t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
         observations = self.detector.process_image(
-            img_bgr,
-            timestamp_s=t,
-            pointcloud_xy=self._latest_pointcloud,
+            img_bgr, timestamp_s=t, pointcloud_xy=self._latest_pointcloud
         )
 
-        for obs in observations:
-            lm_msg = LandmarkMsg()
+        # only publish detections where we got a valid lidar range
+        valid = [obs for obs in observations if obs.range_m > 0]
+        if not valid:
+            return
 
-            # ── TODO: set field names to match your landmarks_msgs definition ──
-            # Run: ros2 interface show landmarks_msgs/msg/LandmarkMsg
-            lm_msg.id      = obs.tag_id
-            lm_msg.range   = obs.range_m      # metres; -1.0 if no lidar match
-            lm_msg.bearing = obs.bearing      # radians, positive = right
+        out_msg = LandmarksMsg()
+        out_msg.landmarks = []
 
-            self._pub.publish(lm_msg)
+        for obs in valid:
+            lm        = LandmarkMsg()
+            lm.label  = obs.tag_id
+            lm.x      = obs.x
+            lm.y      = obs.y
+            lm.s_x    = obs.s_x
+            lm.s_y    = obs.s_y
+            out_msg.landmarks.append(lm)
 
             self.get_logger().info(
-                f"Published id={obs.tag_id}  "
-                f"range={obs.range_m:.2f}m  "
-                f"bearing={np.rad2deg(obs.bearing):+.1f}deg  "
+                f"id={obs.tag_id}  x={obs.x:.2f}  y={obs.y:.2f}  "
+                f"s_x={obs.s_x:.3f}  s_y={obs.s_y:.3f}  "
                 f"{'NEW' if obs.is_new else 'revisit'}"
             )
+
+        self._pub.publish(out_msg)
 
 
 def main(args=None):
