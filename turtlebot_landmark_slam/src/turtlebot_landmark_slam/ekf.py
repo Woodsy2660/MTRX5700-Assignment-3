@@ -223,6 +223,8 @@ class ExtendedKalmanFilter(object):
 
         R = landmark_measurement.covariance
 
+        det_before = np.linalg.det(self._state_covariance[:3, :3])
+
         # Innovation
         y = Z - expected_measurement
 
@@ -247,6 +249,11 @@ class ExtendedKalmanFilter(object):
         self._state_vector = np.array(posterior_state_mean, copy=True)
         self._state_covariance = np.array(posterior_state_covariance, copy=True)
 
+        
+        det_after = np.linalg.det(self._state_covariance[:3, :3])
+        print(f"[COV] label={label} det_before={det_before:.6e} det_after={det_after:.6e} reduction={det_before/det_after:.4f}x")
+
+        
         # ---- diagnostic block ----
         idx = self._landmark_index[label]
 
